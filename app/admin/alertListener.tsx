@@ -1,26 +1,58 @@
 "use client";
-import { useEffect } from "react";
+
+import { useEffect, useRef } from "react";
 import { rtdb } from "@/lib/firebase";
 import { ref, onValue } from "firebase/database";
 
-export default function AlertListener(){
+export default function AlertListener() {
+  // prevents spamming alerts
+  const hasAlerted = useRef(false);
 
-  useEffect(()=>{
-    onValue(ref(rtdb,"sensors/latest"), snap=>{
-      const d = snap.val();
+  useEffect(() => {
+    const sensorsRef = ref(rtdb, "sensors/latest");
 
-      if(d.sensor1.status==="Danger" ||
-         d.sensor2.status==="Danger") {
+    const unsubscribe = onValue(sensorsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (!data) return;
 
-        fetch("/api/alert",{
-          method:"POST",
-          body:JSON.stringify({
-            message:`DANGER! S1:${d.sensor1.moisture}% S2:${d.sensor2.moisture}%`
-          })
+      let dangerSensor: any = null;
+
+      // Check sensor 1
+      if (data.sensor1?.status === "Danger") {
+        dangerSensor = data.sensor1;
+      }
+      // Check sensor 2
+      else if (data.sensor2?.status === "Danger") {
+        dangerSensor = data.sensor2;
+      }
+
+      // 🚨 Trigger alert ONCE
+      if (dangerSensor && !hasAlerted.current) {
+        hasAlerted.current = true;
+
+        fetch("/api/alert", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            sensorName: dangerSensor.name || "Unknown Location",
+            moisture: dangerSensor.moisture,
+          }),
         });
       }
+
+      // ✅ Reset alert when system is safe again
+      if (
+        data.sensor1?.status !== "Danger" &&
+        data.sensor2?.status !== "Danger"
+      ) {
+        hasAlerted.current = false;
+      }
     });
-  },[]);
+
+    return () => unsubscribe();
+  }, []);
 
   return null;
 }

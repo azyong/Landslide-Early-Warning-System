@@ -1,5 +1,6 @@
 "use client";
 
+import AlertListener from "../alertListener";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
@@ -24,7 +25,7 @@ import useSound from "use-sound";
 
 export default function AdminDashboardPage() {
   const router = useRouter();
-
+  
   // ================= STATE =================
   const [authChecked, setAuthChecked] = useState(false);
 
@@ -178,6 +179,7 @@ export default function AdminDashboardPage() {
   // ================= UI =================
   return (
     <main className="min-h-screen bg-slate-100 p-6">
+      <AlertListener />
       <header className="flex justify-between items-center mb-8">
         <div>
           <h1 className="text-2xl font-bold">Admin Dashboard</h1>
