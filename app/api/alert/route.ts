@@ -1,85 +1,70 @@
 import { NextResponse } from "next/server";
 import nodemailer from "nodemailer";
-import { getFirestore, collection, getDocs } from "firebase/firestore";
 import { initializeApp, getApps, getApp } from "firebase/app";
+import { getFirestore, collection, getDocs } from "firebase/firestore";
 
-const SEMAPHORE_KEY = process.env.SEMAPHORE_KEY!;
-
-// ===== FIREBASE INIT =====
+// ===== FIREBASE INIT (SERVER) =====
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
 };
 
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const db = getFirestore(app);
 
-// ===== GET ALL PHONE NUMBERS =====
-async function getAllPhones() {
+// ===== GET ALL USER EMAILS =====
+async function getAllEmails() {
   const snap = await getDocs(collection(db, "users"));
-  const phones: string[] = [];
+  const emails: string[] = [];
 
   snap.forEach((doc) => {
     const data = doc.data();
-    if (data.phone) phones.push(data.phone);
+    if (data.email) emails.push(data.email);
   });
 
-  return phones;
+  return emails;
 }
 
 export async function POST(req: Request) {
   try {
-    const { SensorName, moisture, status } = await req.json();
+    const body = await req.json();
 
-    if (status !== "Danger") {
-      return NextResponse.json({ ok: true, skipped: true });
+    const message =
+      body.message ||
+      `🚨 LANDSLIDE ALERT\nSensor 1: ${body.s1}\nSensor 2: ${body.s2}`;
+
+    const emails = await getAllEmails();
+
+    if (emails.length === 0) {
+      return NextResponse.json({ ok: false, error: "No users found" });
     }
 
-    const message = `🚨 LANDSLIDE ALERT!
-location: ${SensorName}
-Soil moisture reached ${moisture}%.
-Status: DANGER
-Please take precautions immediately.`;
-
-    // ===== GET USERS =====
-    const phones = await getAllPhones();
-
-    // ===== EMAIL =====
     const transporter = nodemailer.createTransport({
       service: "gmail",
       auth: {
-        user: process.env.EMAIL_USER!,
-        pass: process.env.EMAIL_PASS!,
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASS,
       },
     });
 
-    await transporter.sendMail({
-      from: `"Landslide System" <${process.env.EMAIL_USER}>`,
-      to: process.env.EMAIL_USER,
-      subject: "🚨 LANDSLIDE DANGER ALERT",
-      text: message,
-    });
-
-    // ===== SMS =====
-    for (const phone of phones) {
-      await fetch("https://api.semaphore.co/api/v4/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          apikey: SEMAPHORE_KEY,
-          number: phone,
-          message,
-        }),
+    // SEND TO ALL USERS
+    for (const email of emails) {
+      await transporter.sendMail({
+        from: `"Landslide Alert System" <${process.env.EMAIL_USER}>`,
+        to: email,
+        subject: "🚨 LANDSLIDE DANGER ALERT",
+        text: message,
       });
     }
 
     return NextResponse.json({
       ok: true,
-      sentTo: phones.length,
+      sentTo: emails.length,
     });
+
   } catch (err: any) {
-    console.error("ALERT ERROR:", err);
+    console.error("EMAIL ALERT ERROR:", err);
     return NextResponse.json(
       { ok: false, error: err.message },
       { status: 500 }
