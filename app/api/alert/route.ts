@@ -18,7 +18,9 @@ async function getAllEmails() {
 
   snap.forEach((doc) => {
     const data = doc.data();
-    if (data.email) emails.push(data.email);
+    if (data.email && data.role === "user") {
+      emails.push(data.email);
+    }
   });
 
   return emails;
@@ -40,7 +42,7 @@ Please take precaution immediately.
 `;
 
     const emails = await getAllEmails();
-    console.log("📧 Emails:", emails);
+    console.log("📧 Emails found:", emails);
 
     if (emails.length === 0) {
       return NextResponse.json({ ok: false, error: "No users found" });
@@ -54,17 +56,29 @@ Please take precaution immediately.
       },
     });
 
-    await transporter.sendMail({
-      from: `"Landslide Alert System" <${process.env.EMAIL_USER}>`,
-      to: process.env.EMAIL_USER,
-      bcc: emails,
-      subject: "🚨 LANDSLIDE DANGER ALERT",
-      text: message,
-    });
+    let sentCount = 0;
 
-    return NextResponse.json({ ok: true, sentTo: emails.length });
+    for (const email of emails) {
+      await transporter.sendMail({
+        from: `"Landslide Alert System" <${process.env.EMAIL_USER}>`,
+        to: email, // ✅ SEND DIRECTLY
+        subject: "🚨 LANDSLIDE DANGER ALERT",
+        text: message,
+      });
+
+      sentCount++;
+      console.log(`✅ Alert sent to ${email}`);
+    }
+
+    return NextResponse.json({
+      ok: true,
+      sentTo: sentCount,
+    });
   } catch (err: any) {
-    console.error("EMAIL ALERT ERROR:", err);
-    return NextResponse.json({ ok: false, error: err.message }, { status: 500 });
+    console.error("❌ EMAIL ALERT ERROR:", err);
+    return NextResponse.json(
+      { ok: false, error: err.message },
+      { status: 500 }
+    );
   }
 }
